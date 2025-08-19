@@ -1,6 +1,10 @@
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
+import { diffLines } from "diff";
+import chalk from "chalk";
+import { jsonrepair } from "jsonrepair";
+
 class Zgix {
   constructor(repoPath = ".") {
     this.repoPath = path.join(repoPath, ".zgix"); //this will create the .zgix directory in the specified repoPath
@@ -92,17 +96,18 @@ class Zgix {
     let currentCommitHash = await this.getCurrentHead();
     let isHead = true;
     while (currentCommitHash) {
-      const commitDirPath = path.join(
-        this.objectsPath,
-        currentCommitHash.slice(0, 2)
-      );
-      const commitFilePath = path.join(
-        commitDirPath,
-        currentCommitHash.slice(2)
-      );
-      const commitData = JSON.parse(
-        await fs.readFile(commitFilePath, { encoding: "utf-8" })
-      );
+      // const commitDirPath = path.join(
+      //   this.objectsPath,
+      //   currentCommitHash.slice(0, 2)
+      // );
+      // const commitFilePath = path.join(
+      //   commitDirPath,
+      //   currentCommitHash.slice(2)
+      // );
+      // const commitData = JSON.parse(
+      //   await fs.readFile(commitFilePath, { encoding: "utf-8" })
+      // );
+      const commitData = await this.getCommitData(currentCommitHash);
       console.log(
         `\x1b[33mcommit ${currentCommitHash}\x1b[0m` +
           (isHead ? `\x1b[32m (HEAD)\x1b[0m` : "")
@@ -121,11 +126,118 @@ class Zgix {
       currentCommitHash = commitData.parent;
     }
   }
+
+  async showCommitDiff(commitHash) {
+    const commitData = await this.getCommitData(commitHash);
+    if (!commitData) {
+      console.log("commit not found");
+      return;
+    }
+    console.log("changes in the last commit are: ");
+    for (const file of commitData.files) {
+      console.log(`File: ${file.path}`);
+      const fileContent = await this.getFileContent(file.hash);
+      console.log(`Content:\n${fileContent}\n`);
+      if (commitData.parent) {
+        //get the parent commit data
+        const parentCommitData = await this.getCommitData(commitData.parent);
+        if (!parentCommitData) {
+          console.log("Parent commit not found (corrupt history?)");
+          continue; // skip diff for this file
+        }
+        const parentFileContent = await this.getParentFileContent(
+          parentCommitData,
+          file.path
+        );
+        if (parentFileContent) {
+          console.log(`\nDiff: ${parentFileContent}\n`);
+          const diff = diffLines(
+            JSON.stringify(parentFileContent, null, 2),
+            JSON.stringify(fileContent, null, 2)
+          );
+          console.log(diff);
+          diff.forEach((part) => {
+            if (part.added) {
+              process.stdout.write(chalk.green(part.value));
+            } else if (part.removed) {
+              process.stdout.write(chalk.red(part.value));
+            } else {
+              process.stdout.write(chalk.grey(part.value));
+            }
+          });
+          console.log();
+        } else {
+          console.log("new file in this commit");
+        }
+      } else {
+        console.log("first commit");
+      }
+      // Check for deleted files (exist in parent but not in current commit)
+      if (commitData.parent) {
+        const parentCommitData = await this.getCommitData(commitData.parent);
+        if (parentCommitData) {
+          const deletedFiles = parentCommitData.files.filter(
+            (pFile) => !commitData.files.some((f) => f.path === pFile.path)
+          );
+
+          for (const file of deletedFiles) {
+            console.log(`Deleted file: ${file.path}`);
+            const oldContent = await this.getFileContent(file.hash);
+            console.log(
+              chalk.red(
+                `\nRemoved content:\n${JSON.stringify(oldContent, null, 2)}\n`
+              )
+            );
+          }
+        }
+      }
+    }
+  }
+
+  async getCommitData(commitHash) {
+    try {
+      const commitDirPath = path.join(this.objectsPath, commitHash.slice(0, 2));
+      const commitFilePath = path.join(commitDirPath, commitHash.slice(2));
+      return JSON.parse(
+        await fs.readFile(commitFilePath, { encoding: "utf-8" })
+      );
+    } catch (err) {
+      console.error("Error getting commit data:", err);
+      return null;
+    }
+  }
+
+  async getFileContent(fileHash) {
+    const fileDirPath = path.join(this.objectsPath, fileHash.slice(0, 2));
+    const filePath = path.join(fileDirPath, fileHash.slice(2));
+    try {
+      const rawContent = await fs.readFile(filePath, { encoding: "utf-8" });
+      try {
+        return JSON.parse(jsonrepair(rawContent));
+      } catch {
+        return rawContent; // fallback to plain text
+      }
+    } catch (err) {
+      console.error("Error getting file content:", err);
+      return null;
+    }
+  }
+
+  async getParentFileContent(parentCommitData, filePath) {
+    const parentFile = parentCommitData.files.find(
+      (file) => file.path === filePath
+    );
+    if (parentFile) {
+      return await this.getFileContent(parentFile.hash);
+    }
+    return null; // If the file doesn't exist in the parent commit
+  }
 }
 
 (async () => {
   const zgix = new Zgix();
-  await zgix.add("sample.txt");
-  await zgix.commit("fourth commit");
-  await zgix.log();
+  // await zgix.add("sample.txt");
+  // await zgix.commit("5th commit");
+  // await zgix.log();
+  await zgix.showCommitDiff("438ba6fd20957896e4cc359c245bd28c93cd1db5");
 })();

@@ -8,5 +8,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "chalk": "^5.6.0",
+    "diff": "^8.0.2",
+    "jsonrepair": "^3.13.0"
+  }
 }
