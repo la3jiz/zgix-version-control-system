@@ -137,7 +137,7 @@ class Zgix {
     for (const file of commitData.files) {
       console.log(`File: ${file.path}`);
       const fileContent = await this.getFileContent(file.hash);
-      console.log(`Content:\n${fileContent}\n`);
+      console.log(`Content: ${fileContent}\n`);
       if (commitData.parent) {
         //get the parent commit data
         const parentCommitData = await this.getCommitData(commitData.parent);
@@ -155,12 +155,12 @@ class Zgix {
             JSON.stringify(parentFileContent, null, 2),
             JSON.stringify(fileContent, null, 2)
           );
-          console.log(diff);
+          // console.log(diff);
           diff.forEach((part) => {
             if (part.added) {
-              process.stdout.write(chalk.green(part.value));
+              process.stdout.write(chalk.green("+++",part.value));
             } else if (part.removed) {
-              process.stdout.write(chalk.red(part.value));
+              process.stdout.write(chalk.red("---",part.value));
             } else {
               process.stdout.write(chalk.grey(part.value));
             }
@@ -239,5 +239,5 @@ class Zgix {
   // await zgix.add("sample.txt");
   // await zgix.commit("5th commit");
   // await zgix.log();
-  await zgix.showCommitDiff("438ba6fd20957896e4cc359c245bd28c93cd1db5");
+  await zgix.showCommitDiff("be556ff95b21f5af0a5c180bf49c118f60808689");
 })();
