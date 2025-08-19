@@ -1,10 +1,14 @@
+#!/usr/bin/env node
+
 import path from "path";
 import fs from "fs/promises";
 import crypto from "crypto";
 import { diffLines } from "diff";
 import chalk from "chalk";
 import { jsonrepair } from "jsonrepair";
+// import {Command} from 'commander'
 
+// const program = new Command();
 class Zgix {
   constructor(repoPath = ".") {
     this.repoPath = path.join(repoPath, ".zgix"); //this will create the .zgix directory in the specified repoPath
@@ -128,69 +132,75 @@ class Zgix {
   }
 
   async showCommitDiff(commitHash) {
-    const commitData = await this.getCommitData(commitHash);
-    if (!commitData) {
-      console.log("commit not found");
-      return;
-    }
-    console.log("changes in the last commit are: ");
-    for (const file of commitData.files) {
-      console.log(`File: ${file.path}`);
-      const fileContent = await this.getFileContent(file.hash);
-      console.log(`Content: ${fileContent}\n`);
-      if (commitData.parent) {
-        //get the parent commit data
-        const parentCommitData = await this.getCommitData(commitData.parent);
-        if (!parentCommitData) {
-          console.log("Parent commit not found (corrupt history?)");
-          continue; // skip diff for this file
-        }
-        const parentFileContent = await this.getParentFileContent(
-          parentCommitData,
-          file.path
-        );
-        if (parentFileContent) {
-          console.log(`\nDiff: ${parentFileContent}\n`);
-          const diff = diffLines(
-            JSON.stringify(parentFileContent, null, 2),
-            JSON.stringify(fileContent, null, 2)
-          );
-          // console.log(diff);
-          diff.forEach((part) => {
-            if (part.added) {
-              process.stdout.write(chalk.green("+++",part.value));
-            } else if (part.removed) {
-              process.stdout.write(chalk.red("---",part.value));
-            } else {
-              process.stdout.write(chalk.grey(part.value));
-            }
-          });
-          console.log();
-        } else {
-          console.log("new file in this commit");
-        }
-      } else {
-        console.log("first commit");
+    try {
+      const commitData = commitHash
+        ? await this.getCommitData(commitHash)
+        : undefined;
+      if (!commitData) {
+        console.log(chalk.red("commit not found"));
+        return;
       }
-      // Check for deleted files (exist in parent but not in current commit)
-      if (commitData.parent) {
-        const parentCommitData = await this.getCommitData(commitData.parent);
-        if (parentCommitData) {
-          const deletedFiles = parentCommitData.files.filter(
-            (pFile) => !commitData.files.some((f) => f.path === pFile.path)
+      console.log("changes in the last commit are: ");
+      for (const file of commitData.files) {
+        console.log(`File: ${file.path}`);
+        const fileContent = await this.getFileContent(file.hash);
+        console.log(`Content: ${fileContent}\n`);
+        if (commitData.parent) {
+          //get the parent commit data
+          const parentCommitData = await this.getCommitData(commitData.parent);
+          if (!parentCommitData) {
+            console.log("Parent commit not found (corrupt history?)");
+            continue; // skip diff for this file
+          }
+          const parentFileContent = await this.getParentFileContent(
+            parentCommitData,
+            file.path
           );
-
-          for (const file of deletedFiles) {
-            console.log(`Deleted file: ${file.path}`);
-            const oldContent = await this.getFileContent(file.hash);
-            console.log(
-              chalk.red(
-                `\nRemoved content:\n${JSON.stringify(oldContent, null, 2)}\n`
-              )
+          if (parentFileContent) {
+            console.log(`\nDiff: ${parentFileContent}\n`);
+            const diff = diffLines(
+              JSON.stringify(parentFileContent, null, 2),
+              JSON.stringify(fileContent, null, 2)
             );
+            // console.log(diff);
+            diff.forEach((part) => {
+              if (part.added) {
+                process.stdout.write(chalk.green("+++", part.value));
+              } else if (part.removed) {
+                process.stdout.write(chalk.red("---", part.value));
+              } else {
+                process.stdout.write(chalk.grey(part.value));
+              }
+            });
+            console.log();
+          } else {
+            console.log("this file is a new file in this commit");
+          }
+        } else {
+          console.log("first commit");
+        }
+        // Check for deleted files (exist in parent but not in current commit)
+        if (commitData.parent) {
+          const parentCommitData = await this.getCommitData(commitData.parent);
+          if (parentCommitData) {
+            const deletedFiles = parentCommitData.files.filter(
+              (pFile) => !commitData.files.some((f) => f.path === pFile.path)
+            );
+
+            for (const file of deletedFiles) {
+              console.log(`Deleted file: ${file.path}`);
+              const oldContent = await this.getFileContent(file.hash);
+              console.log(
+                chalk.red(
+                  `\nRemoved content:\n${JSON.stringify(oldContent, null, 2)}\n`
+                )
+              );
+            }
           }
         }
       }
+    } catch (err) {
+      console.log(chalk.red("commit not found"));
     }
   }
 
@@ -202,7 +212,7 @@ class Zgix {
         await fs.readFile(commitFilePath, { encoding: "utf-8" })
       );
     } catch (err) {
-      console.error("Error getting commit data:", err);
+      console.error(chalk.red("not a valid commit hash"));
       return null;
     }
   }
@@ -234,10 +244,39 @@ class Zgix {
   }
 }
 
-(async () => {
-  const zgix = new Zgix();
-  // await zgix.add("sample.txt");
-  // await zgix.commit("5th commit");
-  // await zgix.log();
-  await zgix.showCommitDiff("be556ff95b21f5af0a5c180bf49c118f60808689");
-})();
+// (async () => {
+//   const zgix = new Zgix();
+//   // await zgix.add("sample.txt");
+//   // await zgix.commit("5th commit");
+//   // await zgix.log();
+//   await zgix.showCommitDiff("be556ff95b21f5af0a5c180bf49c118f60808689");
+// })();
+
+// ----------------- CLI -----------------
+const args = process.argv.slice(2);
+const cmd = args[0];
+const zgix = new Zgix();
+
+switch (cmd) {
+  case "init":
+    await zgix.init();
+    break;
+  case "add":
+    await zgix.add(args[1]);
+    break;
+  case "commit":
+    const msgIndex = args.indexOf("-m");
+    const message = msgIndex !== -1 ? args[msgIndex + 1] : "no message";
+    await zgix.commit(message);
+    break;
+  case "log":
+    await zgix.log();
+    break;
+  case "diff":
+    await zgix.showCommitDiff(args[1]);
+    break;
+  default:
+    console.log(
+      chalk.red("Unknown command. Available: init, add, commit, log, diff")
+    );
+}
