@@ -242,15 +242,39 @@ class Zgix {
     }
     return null; // If the file doesn't exist in the parent commit
   }
+
+  async checkout(commitHash, filePath) {
+    const commitData = await this.getCommitData(commitHash);
+    if (!commitData) {
+      console.log(chalk.red("unable to checkout: commit not found"));
+      return;
+    }
+    const checkoutData = commitData.files.find(
+      (file) => file.path === filePath
+    );
+    if (!checkoutData) {
+      console.log(chalk.red("unable to checkout: file not found"));
+      return;
+    }
+    const fileContent = await this.getFileContent(checkoutData.hash);
+    console.log(chalk.green(`Checking out file: ${filePath}`));
+    console.log(chalk.yellow(`Commit: ${commitHash}`));
+    console.log(chalk.grey(`File content:\n${fileContent}`));
+    try {
+      await fs.writeFile(filePath, fileContent);
+    } catch (err) {
+      console.error(chalk.red("Error checking out file:"), err);
+    }
+  }
 }
 
-// (async () => {
-//   const zgix = new Zgix();
-//   // await zgix.add("sample.txt");
-//   // await zgix.commit("5th commit");
-//   // await zgix.log();
-//   await zgix.showCommitDiff("be556ff95b21f5af0a5c180bf49c118f60808689");
-// })();
+(async () => {
+  const zgix = new Zgix();
+  // await zgix.add("sample.txt");
+  // await zgix.commit("5th commit");
+  // await zgix.log();
+  // await zgix.checkout("aa4ce8418dd4bbe2166d6a182006d0070648c015", "sample.txt");
+})();
 
 // ----------------- CLI -----------------
 const args = process.argv.slice(2);
@@ -274,6 +298,9 @@ switch (cmd) {
     break;
   case "diff":
     await zgix.showCommitDiff(args[1]);
+    break;
+  case "checkout":
+    await zgix.checkout(args[1], args[2]);
     break;
   default:
     console.log(
