@@ -82,6 +82,13 @@ node zgix.js diff <commit_hash>
 #Example: Diff <commit-hash>
 node zgix.js diff be556ff95b21f5af0a5c180bf49c118f60808689
 ```
+# Checkout  a commit
+```bash
+node zgix.js checkout <commit_hash> <file_path>
+
+#Example: Diff <commit-hash>
+node zgix.js checkout be556ff95b21f5af0a5c180bf49c118f60808689 sample.txt
+```
 
 # View changes in the last commit
 ```bash
